@@ -1,7 +1,7 @@
 # DownloadAnything_Almost
-Designed for mac this is an Apple Script built as an App to easily download and convert audio & video files from many different websites using a GUI that implements the youtube-dl command line tool. 
+Designed for macOS, this is an Apple Script, built as an App to easily download and convert audio & video files from many different websites using a GUI that implements the youtube-dl commandline tool. 
 
-If you have the link, you can probably download it.
+_If you have the link, you can probably download it._
 
 Supported Sites: http://ytdl-org.github.io/youtube-dl/supportedsites.html
 
