@@ -3,6 +3,8 @@ Designed for macOS, this is an Apple Script, built as an App to easily download 
 
 _If you have the link, you can probably download it._
 
+This application is capable of downloading entire playlists from soundcloud with corresponding metadata.
+
 Supported Sites: http://ytdl-org.github.io/youtube-dl/supportedsites.html
 
 All information regarding the youtube-dl tool can be found here: https://youtube-dl.org/, you may need to download youtube-dl first 
