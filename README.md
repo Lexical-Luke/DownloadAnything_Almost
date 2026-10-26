@@ -1,97 +1,63 @@
-# DownloadAnything_Almost
+<p align="center"><img src="assets/icon.png" width="128" alt=""></p>
 
-**v2.0 - Updated for Apple Silicon & yt-dlp**
+<h1 align="center">Download Anything (Almost)</h1>
 
-Designed for macOS, **DownloadAnything_Almost** is an AppleScript app to easily download and convert audio & video files from many different websites using a GUI that implements the [yt-dlp](https://github.com/yt-dlp/yt-dlp) command-line tool.
+<p align="center">
+Paste a link, get an MP3 or MP4. No ads, no watermarks, no accounts.<br>
+A tiny desktop app for <b>macOS</b>, <b>Windows</b> and <b>Linux</b>, powered by <a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a>.
+</p>
 
-**_If you have the link, you can probably download it._**
+<p align="center"><img src="assets/screenshot.png" width="480" alt="Download Anything window with a link, MP3/MP4 choice, Download button and a list of downloaded files"></p>
 
-Downloads are saved to `~/Downloads` in Mac-native formats:
+**_If you have the link, you can probably download it._** YouTube, SoundCloud, Vimeo and [over a thousand other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
 
-- **Video**: MP4 (H.264 video + AAC audio)
-- **Audio**: MP3
+## Features
 
-This application is capable of downloading entire playlists from Soundcloud, YouTube, and more with corresponding metadata.
+- **MP3** (best quality) or **MP4** (H.264 + AAC, plays everywhere)
+- Title, artist and cover art embedded in every file
+- Whole playlists in one go
+- Saves to your Downloads folder. Click a file to open it, or 🔍 to show it in its folder
+- Picks up a link from your clipboard when it opens
+- One-click **Update yt-dlp** when a site stops working
 
-**Supported Sites:** https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md
+## Install
 
-## Requirements
+**1. Get yt-dlp and ffmpeg**
 
-- [Homebrew](https://brew.sh/)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [ffmpeg](https://ffmpeg.org/)
+| OS | Run in a terminal |
+|---|---|
+| macOS | `brew install yt-dlp ffmpeg` (needs [Homebrew](https://brew.sh)) |
+| Windows | `winget install yt-dlp.yt-dlp` (also installs ffmpeg and Deno) |
+| Linux | `sudo apt install ffmpeg pipx` then `pipx install "yt-dlp[default]"`<br>YouTube also needs [Deno](https://deno.com): `curl -fsSL https://deno.land/install.sh \| sh` |
 
-## Installation
+**2. Get the app** from the [latest release](https://github.com/Lexical-Luke/DownloadAnything_Almost/releases/latest)
 
-### Manual Installation
+| OS | File | First launch |
+|---|---|---|
+| macOS (Apple Silicon) | `DownloadAnything-macOS.zip` | Unzip, drag to Applications. If macOS blocks it: System Settings, Privacy & Security, **Open Anyway** |
+| Windows | `DownloadAnything-Windows.exe` | If SmartScreen appears: **More info**, **Run anyway** |
+| Linux | `DownloadAnything-Linux.tar.gz` | Extract and run `./download-anything` |
 
-Install Homebrew (if not already installed):
+## When a site stops working
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+Sites change and break yt-dlp every few months. If a download fails, click **Update yt-dlp** in the app, then try again.
 
-Then install yt-dlp and ffmpeg:
+## Build from source
 
-```bash
-brew install yt-dlp
-brew install ffmpeg
-```
-
-### Using the Installer Apps
-
-For easy _double-click_ installation:
-
-1. Run **"1. Brew Installer"** to install Homebrew
-2. Run **"2. yt-dlp & ffmpeg Installer"** to install yt-dlp and ffmpeg
-3. Use **"DownloadAnything_Almost"** to download media anytime
-
-For convenience, drag the DownloadAnything_Almost app to your Applications folder.
-
-## Usage
-
-1. Launch DownloadAnything_Almost
-2. Paste a URL from any supported site
-3. Choose **Video (MP4)** or **Audio (MP3)**
-4. The download will start in Terminal and open Finder when complete
-
-## Troubleshooting
-
-If the app refuses to run, you may need to allow it in:
-**System Settings > Privacy & Security > Security > Open Anyway**
-
-## Updating yt-dlp
-
-Keep yt-dlp updated for the latest site support:
+Needs [Rust](https://rustup.rs).
 
 ```bash
-brew upgrade yt-dlp
+cargo run --release
 ```
 
-## Rebuilding the Apps
+On macOS, `scripts/bundle-macos.sh` builds a proper `Download Anything.app` in `target/`.
 
-If you modify the AppleScript source files, you can rebuild the apps.
+Every push is built and launch-tested on all three systems by [GitHub Actions](.github/workflows/build.yml). Pushing a `v*` tag publishes a release.
 
-### Using the Build App
+## History
 
-Double-click **"3. Build Apps"** to compile the DownloadAnything_Almost app from source.
+This started in 2019 as a little AppleScript that ran youtube-dl in Terminal. It's now a native Rust app.
 
-### Manual Rebuild (Terminal)
-
-```bash
-cd "/path/to/Youtube-dl_GUI/Distro"
-osacompile -o "DownloadAnything_Almost.app" "Source code/DownloadAnything_Almost Script.applescript"
-osacompile -o "1. Brew Installer.app" "Source code/Brew Installer Script.applescript"
-osacompile -o "2. yt-dlp & ffmpeg Installer.app" "Source code/yt-dlp & ffmpeg Installer Script.applescript"
-```
-
-### Source Files
-
-All source code is in `Distro/Source code/`:
-
-| Script                                         | Purpose                   |
-| ---------------------------------------------- | ------------------------- |
-| `DownloadAnything_Almost Script.applescript`   | Main downloader app       |
-| `Brew Installer Script.applescript`            | Homebrew installer        |
-| `yt-dlp & ffmpeg Installer Script.applescript` | yt-dlp + ffmpeg installer |
-| `Build Apps Script.applescript`                | Compiles the main app     |
+- [`v1.0`](https://github.com/Lexical-Luke/DownloadAnything_Almost/tree/v1.0): the original 2019 AppleScript (youtube-dl)
+- [`v2.0`](https://github.com/Lexical-Luke/DownloadAnything_Almost/tree/v2.0): AppleScript updated for yt-dlp and Apple Silicon (2026)
+- `v3.0`: rewritten in Rust for macOS, Windows and Linux

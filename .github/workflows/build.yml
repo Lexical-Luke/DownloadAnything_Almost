@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            asset: DownloadAnything-macOS.zip
+          - os: windows-latest
+            asset: DownloadAnything-Windows.exe
+          - os: ubuntu-latest
+            asset: DownloadAnything-Linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Linux libraries for the window and the smoke test
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libegl1
+
+      - run: cargo test
+
+      - name: Package
+        run: |
+          case "$RUNNER_OS" in
+            macOS)   scripts/bundle-macos.sh && (cd target && ditto -c -k --keepParent "Download Anything.app" "../${{ matrix.asset }}") ;;
+            Windows) cargo build --release && cp target/release/download-anything.exe "${{ matrix.asset }}" ;;
+            Linux)   cargo build --release && tar czf "${{ matrix.asset }}" -C target/release download-anything ;;
+          esac
+
+      - name: Smoke test (app opens and stays open)
+        run: |
+          run=""; [ "$RUNNER_OS" = Linux ] && run="xvfb-run -a"
+          $run target/release/download-anything & pid=$!
+          sleep 15
+          kill -0 $pid || { echo "App exited early"; exit 1; }
+          kill $pid || true
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes 2>/dev/null || true
+          gh release upload "$GITHUB_REF_NAME" "${{ matrix.asset }}" --clobber

@@ -1,0 +1,13 @@
+[package]
+name = "download-anything"
+version = "3.0.0"
+edition = "2024"
+description = "Download MP3s and MP4s from almost any site. A tiny GUI for yt-dlp."
+
+[dependencies]
+arboard = "3.7.0"
+eframe = "0.37.0"
+
+[profile.release]
+strip = true
+lto = true
