@@ -1,6 +1,6 @@
 #![windows_subsystem = "windows"] // no console window on Windows
 
-use eframe::egui;
+use eframe::egui::{self, RichText};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -23,13 +23,42 @@ const UPDATE: &[&str] = &[
 #[cfg(not(any(target_os = "macos", windows)))]
 const UPDATE: &[&str] = &["pipx", "install", "--force", "yt-dlp[default]"];
 
+const REVEAL: &str = if cfg!(target_os = "macos") {
+    "Show in Finder"
+} else if cfg!(windows) {
+    "Show in Explorer"
+} else {
+    "Show in folder"
+};
+
+/// Ionicons (MIT, see assets/icons/LICENSE), recoloured white so a tint can colour them.
+mod icons {
+    use eframe::egui::{self, ImageSource, include_image};
+
+    pub const AUDIO: ImageSource = include_image!("../assets/icons/musical-notes-outline.svg");
+    pub const VIDEO: ImageSource = include_image!("../assets/icons/film-outline.svg");
+    pub const SETTINGS: ImageSource = include_image!("../assets/icons/settings-outline.svg");
+    pub const REFRESH: ImageSource = include_image!("../assets/icons/refresh-outline.svg");
+    pub const EMPTY: ImageSource = include_image!("../assets/icons/file-tray-outline.svg");
+    pub const FOLDER: ImageSource = include_image!("../assets/icons/folder-open-outline.svg");
+
+    pub fn sized(source: ImageSource<'static>, size: f32) -> egui::Image<'static> {
+        egui::Image::new(source).fit_to_exact_size(egui::vec2(size, size))
+    }
+
+    /// An icon-only button whose icon follows the button's text colour (and hover state).
+    pub fn button(source: ImageSource<'static>) -> egui::Button<'static> {
+        egui::Button::image(sized(source, 16.0)).image_tint_follows_text_color(true)
+    }
+}
+
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Download Anything")
             .with_app_id("download-anything")
-            .with_inner_size([480.0, 460.0])
-            .with_min_inner_size([400.0, 340.0])
+            .with_inner_size([460.0, 320.0])
+            .with_min_inner_size([380.0, 280.0])
             .with_icon(
                 eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).unwrap(),
             ),
@@ -39,11 +68,19 @@ fn main() -> eframe::Result {
         "Download Anything",
         options,
         Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx); // renders the SVG icons
             cc.egui_ctx.all_styles_mut(|s| {
                 s.spacing.item_spacing = egui::vec2(8.0, 8.0);
                 s.spacing.button_padding = egui::vec2(10.0, 5.0);
+                s.interaction.selectable_labels = false; // so clicks reach the file rows
             });
-            Ok(Box::new(App::new()))
+            #[allow(unused_mut)]
+            let mut app = App::new();
+            #[cfg(any(target_os = "macos", windows))]
+            if menu_bar::saved() {
+                app.tray = menu_bar::Tray::new(&cc.egui_ctx);
+            }
+            Ok(Box::new(app))
         }),
     )
 }
@@ -63,7 +100,12 @@ struct App {
     status: String,
     files: Vec<PathBuf>, // ponytail: this session only, no history saved
     last_file: Option<PathBuf>,
+    last_download: Vec<String>, // what Retry runs again
     failed: bool,
+    #[cfg(any(target_os = "macos", windows))]
+    tray: Option<menu_bar::Tray>,
+    #[cfg(any(target_os = "macos", windows))]
+    hidden: bool,
 }
 
 impl App {
@@ -83,12 +125,17 @@ impl App {
             status: "Paste a link, pick MP3 or MP4, hit Download.".into(),
             files: vec![],
             last_file: None,
+            last_download: vec![],
             failed: false,
+            #[cfg(any(target_os = "macos", windows))]
+            tray: None,
+            #[cfg(any(target_os = "macos", windows))]
+            hidden: false,
         }
     }
 
     fn start(&mut self, ctx: &egui::Context) {
-        let url = self.url.trim().to_owned();
+        let url = self.url.trim();
         if url.is_empty() {
             return;
         }
@@ -112,18 +159,19 @@ impl App {
             "after_move:filepath",
             "--progress",
             "--newline",
-            &url,
+            url,
         ]);
-        self.run(&args, false, ctx);
+        self.last_download = args.iter().map(ToString::to_string).collect();
+        self.run(self.last_download.clone(), false, ctx);
     }
 
-    fn run(&mut self, args: &[&str], update: bool, ctx: &egui::Context) {
+    fn run(&mut self, args: Vec<String>, update: bool, ctx: &egui::Context) {
         if self.job.is_some() {
             return;
         }
         self.progress = 0.0;
         self.last_file = None;
-        match spawn(args, ctx) {
+        match spawn(&args, ctx) {
             Ok((child, lines)) => {
                 self.job = Some(Job {
                     child,
@@ -136,7 +184,7 @@ impl App {
             }
             Err(e) => {
                 self.failed = true;
-                self.status = match (e.kind(), args[0]) {
+                self.status = match (e.kind(), args[0].as_str()) {
                     (std::io::ErrorKind::NotFound, "yt-dlp") => {
                         "yt-dlp is missing. Click Update yt-dlp to install it.".into()
                     }
@@ -180,30 +228,52 @@ impl App {
             return;
         };
         let ok = job.child.wait().is_ok_and(|s| s.success());
-        self.failed = !ok && !job.cancelled && !job.update;
+        self.failed = !ok && !job.cancelled;
         self.progress = if ok { 1.0 } else { 0.0 };
         if job.cancelled {
             self.status = "Cancelled.".into();
+        } else if job.update && ok {
+            self.status = "yt-dlp is up to date. Try your link again.".into();
         } else if job.update {
-            if ok {
-                self.status = "yt-dlp is up to date. Try your link again.".into();
-            }
+            // keep the package manager's last line as the error
         } else if self.failed {
-            self.status += "\nSite changed? Click Update yt-dlp, then try again.";
+            self.status += "\nSite down or changed? Retry, or update yt-dlp.";
         } else if let Some(f) = &self.last_file {
             self.status = format!("Done: {}", file_name(f));
+        } else {
+            self.status = "Done.".into();
         }
     }
 }
 
 impl eframe::App for App {
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(unused_variables))]
+    fn logic(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.poll(); // also runs while the window is hidden in the menu bar
+        #[cfg(any(target_os = "macos", windows))]
+        self.tray_actions(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
-        self.poll();
         let ctx = ui.ctx().clone();
-        let (mut start, mut update) = (false, false);
+        #[cfg(any(target_os = "macos", windows))]
+        if self.tray.is_some() && ui.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.set_hidden(&ctx, true);
+        }
+        // Deleted or moved files drop off the list. Cheap: a few stat calls, only when egui repaints.
+        self.files.retain(|f| f.is_file());
+        let (mut start, mut retry, mut update) = (false, false, false);
 
         egui::Panel::top("controls")
-            .frame(egui::Frame::central_panel(ui.style()).inner_margin(16))
+            .frame(
+                egui::Frame::central_panel(ui.style()).inner_margin(egui::Margin {
+                    left: 16,
+                    right: 16,
+                    top: 16,
+                    bottom: 12,
+                }),
+            )
             .show(ui, |ui| {
                 let edit = ui.add(
                     egui::TextEdit::singleline(&mut self.url)
@@ -215,8 +285,24 @@ impl eframe::App for App {
                 egui::Sides::new().show(
                     ui,
                     |ui| {
-                        ui.selectable_value(&mut self.audio, true, "MP3");
-                        ui.selectable_value(&mut self.audio, false, "MP4");
+                        egui::Frame::new()
+                            .fill(ui.visuals().extreme_bg_color)
+                            .corner_radius(8)
+                            .inner_margin(2)
+                            .show(ui, |ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                for (audio, icon, label) in
+                                    [(true, icons::AUDIO, "MP3"), (false, icons::VIDEO, "MP4")]
+                                {
+                                    let atoms = (icons::sized(icon, 16.0), label);
+                                    let button =
+                                        egui::Button::selectable(self.audio == audio, atoms)
+                                            .image_tint_follows_text_color(true);
+                                    if ui.add(button).clicked() {
+                                        self.audio = audio;
+                                    }
+                                }
+                            });
                     },
                     |ui| {
                         if let Some(job) = &mut self.job {
@@ -225,81 +311,315 @@ impl eframe::App for App {
                                 let _ = job.child.kill();
                             }
                         } else {
-                            let download =
-                                egui::Button::new(egui::RichText::new("Download").strong())
-                                    .fill(ui.visuals().selection.bg_fill)
-                                    .min_size(egui::vec2(96.0, 0.0));
+                            let download = egui::Button::new(RichText::new("Download").strong())
+                                .fill(ui.visuals().selection.bg_fill)
+                                .min_size(egui::vec2(96.0, 0.0));
                             start |= ui
                                 .add_enabled(!self.url.trim().is_empty(), download)
                                 .clicked();
-                            // ponytail: manual button, not auto-update; sites break yt-dlp every few months
-                            update = self.failed && ui.button("Update yt-dlp").clicked();
                         }
+                        #[cfg(any(target_os = "macos", windows))]
+                        menu_bar::settings(ui, &mut self.tray);
                     },
                 );
-                ui.add(egui::ProgressBar::new(self.progress).desired_height(6.0));
-                ui.label(egui::RichText::new(&self.status).weak());
+                if self.job.is_some() || self.progress > 0.0 {
+                    ui.add(egui::ProgressBar::new(self.progress).desired_height(4.0));
+                } else {
+                    ui.add_space(4.0); // no stray dot when idle
+                }
+                let color = if self.failed {
+                    ui.visuals().error_fg_color
+                } else {
+                    ui.visuals().weak_text_color()
+                };
+                ui.add(egui::Label::new(RichText::new(&self.status).color(color)).selectable(true));
+                if self.failed {
+                    ui.horizontal(|ui| {
+                        retry = !self.last_download.is_empty() && ui.button("Retry").clicked();
+                        // ponytail: manual button, not auto-update; sites break yt-dlp every few months
+                        update = ui.button("Update yt-dlp").clicked();
+                    });
+                }
             });
 
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::central_panel(ui.style())
-                    .inner_margin(egui::Margin::symmetric(16, 12)),
+                    .inner_margin(egui::Margin::symmetric(16, 10)),
             )
             .show(ui, |ui| {
+                egui::Sides::new().show(
+                    ui,
+                    |ui| ui.label(RichText::new("Recent downloads").small().weak()),
+                    |ui| {
+                        // The list re-checks its files on every repaint; clicking just triggers one.
+                        ui.add(icons::button(icons::REFRESH).frame(false))
+                            .on_hover_text("Refresh");
+                    },
+                );
                 if self.files.is_empty() {
-                    ui.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space((ui.available_height() / 2.0 - 48.0).max(0.0));
+                        let weak = ui.visuals().weak_text_color();
+                        ui.add(icons::sized(icons::EMPTY, 40.0).tint(weak));
+                        ui.label(RichText::new("No downloads yet").weak());
                         ui.label(
-                            egui::RichText::new(
-                                "No downloads yet\nFiles you download show up here.",
-                            )
-                            .weak(),
-                        )
+                            RichText::new("Files you download show up here.")
+                                .small()
+                                .weak(),
+                        );
                     });
                     return;
                 }
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for f in self.files.iter().rev() {
-                        egui::Sides::new().shrink_left().show(
-                            ui,
-                            |ui| {
-                                let icon = if is_audio(f) { "🎵" } else { "🎬" };
-                                let name = egui::Label::new(format!("{icon}  {}", file_name(f)))
-                                    .truncate()
-                                    .sense(egui::Sense::click());
-                                if ui.add(name).on_hover_text("Click to open").clicked() {
-                                    open(f, false);
-                                }
-                            },
-                            |ui| {
-                                if ui
-                                    .small_button("🔍")
-                                    .on_hover_text("Show in folder")
-                                    .clicked()
-                                {
-                                    open(f, true);
-                                }
-                            },
-                        );
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        for f in self.files.iter().rev() {
+                            file_row(ui, f);
+                        }
+                    });
             });
 
         if start {
             self.start(&ctx);
         }
+        if retry {
+            self.run(self.last_download.clone(), false, &ctx);
+        }
         if update {
-            self.run(UPDATE, true, &ctx);
+            self.run(UPDATE.iter().map(ToString::to_string).collect(), true, &ctx);
         }
     }
 }
 
+/// One downloaded file: click to open it, or the folder button to show it in its folder.
+fn file_row(ui: &mut egui::Ui, path: &Path) {
+    let background = ui.painter().add(egui::Shape::Noop);
+    let row = ui
+        .scope_builder(egui::UiBuilder::new().sense(egui::Sense::click()), |ui| {
+            egui::Sides::new().shrink_left().show(
+                ui,
+                |ui| {
+                    let icon = if is_audio(path) {
+                        icons::AUDIO
+                    } else {
+                        icons::VIDEO
+                    };
+                    ui.add(icons::sized(icon, 22.0).tint(ui.visuals().weak_text_color()));
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.add(egui::Label::new(file_name(path)).truncate());
+                        ui.label(RichText::new(details(path)).small().weak());
+                    });
+                },
+                |ui| {
+                    if ui
+                        .add(icons::button(icons::FOLDER))
+                        .on_hover_text(REVEAL)
+                        .clicked()
+                    {
+                        open(path, true);
+                    }
+                },
+            );
+        })
+        .response;
+    if row.hovered() {
+        let fill = ui.visuals().widgets.hovered.weak_bg_fill;
+        let rect = row.rect.expand2(egui::vec2(6.0, 3.0));
+        ui.painter()
+            .set(background, egui::Shape::rect_filled(rect, 6.0, fill));
+    }
+    if row
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text("Click to open")
+        .clicked()
+    {
+        open(path, false);
+    }
+}
+
+/// Menu bar icon (macOS) or system tray icon (Windows). Linux has none: its tray needs GTK.
+#[cfg(any(target_os = "macos", windows))]
+mod menu_bar {
+    use super::App;
+    use eframe::egui::{self, RichText};
+    use std::path::PathBuf;
+    use std::sync::mpsc::{Receiver, channel};
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+    use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+    #[cfg(target_os = "macos")]
+    const ICON: &[u8] = include_bytes!("../assets/tray.png"); // black glyph, macOS tints it
+    #[cfg(windows)]
+    const ICON: &[u8] = include_bytes!("../assets/icon.png");
+
+    pub enum Action {
+        Toggle,
+        Show,
+        Quit,
+    }
+
+    pub struct Tray {
+        _icon: TrayIcon,
+        actions: Receiver<Action>,
+    }
+
+    impl Tray {
+        pub fn new(ctx: &egui::Context) -> Option<Self> {
+            let (tx, actions) = channel();
+            let (tx2, ctx2, ctx3) = (tx.clone(), ctx.clone(), ctx.clone());
+            TrayIconEvent::set_event_handler(Some(move |e| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = e
+                {
+                    let _ = tx.send(Action::Toggle);
+                    ctx2.request_repaint();
+                }
+            }));
+            MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
+                let _ = tx2.send(if e.id == "quit" {
+                    Action::Quit
+                } else {
+                    Action::Show
+                });
+                ctx3.request_repaint();
+            }));
+            let menu = Menu::new();
+            menu.append_items(&[
+                &MenuItem::with_id("show", "Open Download Anything", true, None),
+                &MenuItem::with_id("quit", "Quit", true, None),
+            ])
+            .ok()?;
+            let png = eframe::icon_data::from_png_bytes(ICON).ok()?;
+            let image = tray_icon::Icon::from_rgba(png.rgba, png.width, png.height).ok()?;
+            #[cfg(target_os = "macos")]
+            let builder = TrayIconBuilder::new().with_icon_templated(image); // recoloured to match the menu bar
+            #[cfg(windows)]
+            let builder = TrayIconBuilder::new().with_icon(image);
+            let icon = builder
+                .with_menu(Box::new(menu))
+                .with_menu_on_left_click(false)
+                .with_tooltip("Download Anything")
+                .build()
+                .ok()?;
+            show_in_dock(false);
+            Some(Self {
+                _icon: icon,
+                actions,
+            })
+        }
+    }
+
+    impl Drop for Tray {
+        fn drop(&mut self) {
+            show_in_dock(true);
+        }
+    }
+
+    impl App {
+        pub fn tray_actions(&mut self, ctx: &egui::Context) {
+            while let Some(action) = self.tray.as_ref().and_then(|t| t.actions.try_recv().ok()) {
+                let focused = ctx.input(|i| i.viewport().focused.unwrap_or(false));
+                match action {
+                    Action::Toggle if !self.hidden && focused => self.set_hidden(ctx, true),
+                    Action::Toggle | Action::Show => self.set_hidden(ctx, false),
+                    Action::Quit => {
+                        if let Some(job) = &mut self.job {
+                            let _ = job.child.kill();
+                        }
+                        std::process::exit(0);
+                    }
+                }
+            }
+        }
+
+        pub fn set_hidden(&mut self, ctx: &egui::Context, hidden: bool) {
+            self.hidden = hidden;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(!hidden));
+            if !hidden {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+    }
+
+    /// The settings (gear) menu.
+    pub fn settings(ui: &mut egui::Ui, tray: &mut Option<Tray>) {
+        let gear = super::icons::button(super::icons::SETTINGS);
+        let (response, _) = egui::containers::menu::MenuButton::from_button(gear).ui(ui, |ui| {
+            let mut on = tray.is_some();
+            let label = if cfg!(target_os = "macos") {
+                "Run from the menu bar (hides the Dock icon)"
+            } else {
+                "Run from the system tray"
+            };
+            if ui.checkbox(&mut on, label).changed() {
+                *tray = if on { Tray::new(ui.ctx()) } else { None };
+                save(tray.is_some());
+            }
+            ui.label(
+                RichText::new(
+                    "Closing the window keeps it running.\nClick the icon to open it again.",
+                )
+                .small()
+                .weak(),
+            );
+        });
+        response.on_hover_text("Settings");
+    }
+
+    // ponytail: one setting, so it's a marker file; switch to a settings file when there's a second
+    fn marker() -> Option<PathBuf> {
+        let base = if cfg!(windows) {
+            std::env::var_os("APPDATA").map(PathBuf::from)
+        } else {
+            std::env::home_dir().map(|h| h.join("Library/Application Support"))
+        }?;
+        Some(base.join("Download Anything").join("menu-bar-mode"))
+    }
+
+    pub fn saved() -> bool {
+        marker().is_some_and(|m| m.exists())
+    }
+
+    fn save(on: bool) {
+        let Some(m) = marker() else { return };
+        let _ = if on {
+            std::fs::create_dir_all(m.parent().unwrap()).and_then(|_| std::fs::write(&m, ""))
+        } else {
+            std::fs::remove_file(&m)
+        };
+    }
+
+    fn show_in_dock(show: bool) {
+        #[cfg(target_os = "macos")]
+        if let Some(mtm) = objc2::MainThreadMarker::new() {
+            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy as Policy};
+            let app = NSApplication::sharedApplication(mtm);
+            app.setActivationPolicy(if show {
+                Policy::Regular
+            } else {
+                Policy::Accessory
+            });
+            #[allow(deprecated)] // activate() needs macOS 14
+            app.activateIgnoringOtherApps(true); // switching policy can push our window behind others
+        }
+        #[cfg(windows)]
+        let _ = show; // a hidden window already leaves the taskbar
+    }
+}
+
 /// Runs a command with stdout+stderr merged, sending each output line to the UI.
-fn spawn(args: &[&str], ctx: &egui::Context) -> std::io::Result<(Child, Receiver<String>)> {
+fn spawn(args: &[String], ctx: &egui::Context) -> std::io::Result<(Child, Receiver<String>)> {
+    let dir = downloads_dir();
+    std::fs::create_dir_all(&dir)?; // in case Downloads was deleted
     let (reader, writer) = std::io::pipe()?;
-    let mut cmd = Command::new(args[0]);
+    let mut cmd = Command::new(&args[0]);
     cmd.args(&args[1..])
-        .current_dir(downloads_dir())
+        .current_dir(dir)
         .env("PATH", search_path())
         .stdin(Stdio::null())
         .stdout(writer.try_clone()?)
@@ -390,6 +710,17 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_default()
         .to_string_lossy()
         .into()
+}
+
+/// "MP3 · 4.2 MB"
+fn details(path: &Path) -> String {
+    let ext = path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_uppercase();
+    let mb = std::fs::metadata(path).map_or(0.0, |m| m.len() as f64 / 1e6);
+    format!("{ext} · {mb:.1} MB")
 }
 
 fn is_audio(path: &Path) -> bool {

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- App icon: Happy Mac on the macOS icon grid (824px rounded square, 100px margin). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9CCBFF"/>
+      <stop offset="1" stop-color="#4C63F5"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCFAF2"/>
+      <stop offset="1" stop-color="#E2DBC6"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#DCDAFF"/>
+      <stop offset="1" stop-color="#ABA6EE"/>
+    </linearGradient>
+    <filter id="iconShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <filter id="blur" x="-20%" y="-200%" width="140%" height="500%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#iconShadow)"/>
+
+  <ellipse cx="512" cy="806" rx="240" ry="24" fill="#1B1F5E" opacity="0.35" filter="url(#blur)"/>
+
+  <!-- foot, then body -->
+  <rect x="330" y="712" width="364" height="88" rx="22" fill="#C9C1A9"/>
+  <rect x="294" y="196" width="436" height="548" rx="42" fill="url(#body)"/>
+  <rect x="294" y="196" width="436" height="548" rx="42" fill="none" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="4"/>
+
+  <!-- screen bezel and screen -->
+  <rect x="344" y="244" width="336" height="292" rx="28" fill="#CBC3AB"/>
+  <rect x="362" y="262" width="300" height="256" rx="16" fill="url(#screen)"/>
+
+  <!-- the face, on an 18px pixel grid -->
+  <g fill="#1C1B2E">
+    <rect x="431" y="328" width="18" height="36"/>
+    <rect x="575" y="328" width="18" height="36"/>
+    <rect x="503" y="328" width="18" height="72"/>
+    <rect x="485" y="382" width="18" height="18"/>
+    <rect x="449" y="418" width="18" height="18"/>
+    <rect x="557" y="418" width="18" height="18"/>
+    <rect x="467" y="436" width="90" height="18"/>
+  </g>
+
+  <!-- floppy slot -->
+  <rect x="548" y="616" width="132" height="14" rx="7" fill="#6E6857"/>
+</svg>

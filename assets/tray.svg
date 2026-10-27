@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <!-- macOS menu bar glyph: black on transparent, macOS tints it. -->
+  <mask id="cutouts">
+    <rect x="10" y="3" width="24" height="33" rx="4" fill="#fff"/>
+    <rect x="13" y="34" width="18" height="6" rx="1.5" fill="#fff"/>
+    <rect x="13.5" y="6.5" width="17" height="15.5" rx="2" fill="#000"/>
+    <rect x="22" y="28" width="8" height="2.5" rx="1.25" fill="#000"/>
+  </mask>
+  <rect width="44" height="44" fill="#000" mask="url(#cutouts)"/>
+  <g fill="#000">
+    <rect x="17" y="10" width="2" height="4"/>
+    <rect x="25" y="10" width="2" height="4"/>
+    <rect x="17.5" y="16" width="2" height="2"/>
+    <rect x="24.5" y="16" width="2" height="2"/>
+    <rect x="19.5" y="18" width="5" height="2"/>
+  </g>
+</svg>

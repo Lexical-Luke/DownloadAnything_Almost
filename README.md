@@ -16,9 +16,10 @@ A tiny desktop app for <b>macOS</b>, <b>Windows</b> and <b>Linux</b>, powered by
 - **MP3** (best quality) or **MP4** (H.264 + AAC, plays everywhere)
 - Title, artist and cover art embedded in every file
 - Whole playlists in one go
-- Saves to your Downloads folder. Click a file to open it, or 🔍 to show it in its folder
+- Saves to your Downloads folder. Click a file to open it, or its folder button to show it in Finder or Explorer. Files you delete or move drop off the list
 - Picks up a link from your clipboard when it opens
-- One-click **Update yt-dlp** when a site stops working
+- **Retry** and one-click **Update yt-dlp** when a download fails
+- **Menu bar mode** (macOS) or **system tray mode** (Windows): turn it on under Settings (the gear) to keep the app one click away, without a Dock icon
 
 ## Install
 
@@ -61,3 +62,8 @@ This started in 2019 as a little AppleScript that ran youtube-dl in Terminal. It
 - [`v1.0`](https://github.com/Lexical-Luke/DownloadAnything_Almost/tree/v1.0): the original 2019 AppleScript (youtube-dl)
 - [`v2.0`](https://github.com/Lexical-Luke/DownloadAnything_Almost/tree/v2.0): AppleScript updated for yt-dlp and Apple Silicon (2026)
 - `v3.0`: rewritten in Rust for macOS, Windows and Linux
+- `v3.1`: menu bar mode, Retry, Ionicons, sharper icon
+
+## Credits
+
+Icons from [Ionicons](https://ionic.io/ionicons) (MIT, see [`assets/icons/LICENSE`](assets/icons/LICENSE)). Downloading by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](https://ffmpeg.org).
